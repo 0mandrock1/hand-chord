@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hand Chord — gesture-controlled synth</title>
+<meta name="description" content="Play chords in the browser with your hands. Webcam hand tracking drives a Web Audio synth: left hand picks the scale degree and tonality, right hand picks inversion, octave, filter and volume.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🖐</text></svg>">
+</head>
+<body>
+
+<div class="stage">
+  <video id="cam" playsinline muted></video>
+  <canvas id="overlay"></canvas>
+
+  <header class="topbar">
+    <h1>Hand&nbsp;Chord</h1>
+    <div class="hands">
+      <span class="dot left" id="left-dot" title="left hand">L</span>
+      <span class="dot right" id="right-dot" title="right hand">R</span>
+    </div>
+    <button type="button" id="help-open" class="icon" aria-label="Help">?</button>
+  </header>
+
+  <section class="readout">
+    <div class="chord-name" id="chord">—</div>
+    <div class="chord-notes" id="chord-notes"></div>
+    <dl class="facts">
+      <div><dt>degree</dt><dd id="degree">—</dd></div>
+      <div><dt>mode</dt><dd id="mode">—</dd></div>
+      <div><dt>quality</dt><dd id="quality">—</dd></div>
+      <div><dt>octave</dt><dd id="octave">4</dd></div>
+    </dl>
+  </section>
+
+  <footer class="controls">
+    <label class="field">
+      <span>Key</span>
+      <select id="key"></select>
+    </label>
+
+    <div class="field grow">
+      <span>Synth</span>
+      <div class="chips" id="preset"></div>
+    </div>
+
+    <label class="field grow">
+      <span>Filter <em id="filter-value">50%</em></span>
+      <input type="range" id="filter" min="0" max="100" value="50">
+    </label>
+
+    <label class="field toggle">
+      <input type="checkbox" id="swap-hands">
+      <span>Swap hands</span>
+    </label>
+  </footer>
+
+  <p class="status" id="status">camera and audio are off</p>
+</div>
+
+<div class="start-screen" id="start-screen">
+  <div class="start-card">
+    <h2>Hand&nbsp;Chord</h2>
+    <p>A webcam and a pair of hands is the whole instrument. Your left hand chooses
+       the chord, your right hand shapes it.</p>
+    <button type="button" id="start" class="primary">Enable camera &amp; audio</button>
+    <p class="fineprint">Video never leaves your device — hand tracking runs locally in the browser.</p>
+  </div>
+</div>
+
+<div class="help" id="help" role="dialog" aria-modal="true" aria-label="Guide">
+  <div class="help-card">
+    <button type="button" id="help-close" class="icon close" aria-label="Close">✕</button>
+    <h2>Guide</h2>
+
+    <div class="help-cols">
+      <section>
+        <h3 class="left">Left hand — which chord</h3>
+
+        <h4>Tilt</h4>
+        <ul>
+          <li>lean inward → <b>major</b></li>
+          <li>lean outward → <b>minor</b></li>
+        </ul>
+
+        <h4>Fingers — scale degree</h4>
+        <ul>
+          <li>1 finger → I</li>
+          <li>2 → II</li>
+          <li>3 → III</li>
+          <li>4 → IV</li>
+          <li>5 → V</li>
+          <li>index + pinky → VI</li>
+          <li>index + pinky + thumb → VII</li>
+        </ul>
+        <p class="note">Closed fist = silence.</p>
+      </section>
+
+      <section>
+        <h3 class="right">Right hand — how it sounds</h3>
+
+        <h4>Fingers — chord quality</h4>
+        <ul>
+          <li>1 finger → root position</li>
+          <li>2 → 1st inversion</li>
+          <li>3 → major / minor 7th</li>
+          <li>4 → dominant / diminished 7th</li>
+        </ul>
+
+        <h4>Thumb — octave</h4>
+        <ul>
+          <li>tucked in → higher octave</li>
+          <li>stuck out → lower octave</li>
+        </ul>
+
+        <h4>Tilt — filter</h4>
+        <ul>
+          <li>lean inward → brighter</li>
+          <li>lean outward → darker</li>
+        </ul>
+
+        <h4>Height — volume</h4>
+        <ul>
+          <li>raise the hand → louder</li>
+          <li>lower it → softer</li>
+        </ul>
+      </section>
+    </div>
+
+    <p class="note">
+      If the hands read backwards, tick <b>Swap hands</b> — camera drivers disagree
+      about mirroring.
+    </p>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

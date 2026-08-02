@@ -1,0 +1,20 @@
+{
+  "name": "hand-chord",
+  "version": "1.0.0",
+  "description": "Play chords in the browser with your hands — webcam hand tracking driving a Web Audio synth.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/logic.test.mjs",
+    "start": "python3 -m http.server 8080"
+  },
+  "keywords": [
+    "web-audio",
+    "mediapipe",
+    "hand-tracking",
+    "synthesizer",
+    "gesture-control",
+    "music"
+  ],
+  "license": "MIT"
+}
