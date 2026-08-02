@@ -20,6 +20,7 @@
       <span class="dot left" id="left-dot" title="left hand">L</span>
       <span class="dot right" id="right-dot" title="right hand">R</span>
     </div>
+    <button type="button" id="drums-open" class="icon" aria-label="Drums">▦</button>
     <button type="button" id="help-open" class="icon" aria-label="Help">?</button>
   </header>
 
@@ -66,6 +67,37 @@
        the chord, your right hand shapes it.</p>
     <button type="button" id="start" class="primary">Enable camera &amp; audio</button>
     <p class="fineprint">Video never leaves your device — hand tracking runs locally in the browser.</p>
+  </div>
+</div>
+
+<div class="drums" id="drums" aria-label="Drum machine">
+  <div class="drums-card">
+    <div class="drums-head">
+      <button type="button" id="drums-play" class="primary compact">Play</button>
+      <label class="field">
+        <span>Tempo <em id="bpm-value">120</em> BPM</span>
+        <input type="range" id="bpm" min="60" max="180" value="120">
+      </label>
+      <label class="field">
+        <span>Pattern</span>
+        <select id="drum-pattern"></select>
+      </label>
+      <label class="field">
+        <span>Level <em id="drum-level-value">70%</em></span>
+        <input type="range" id="drum-level" min="0" max="100" value="70">
+      </label>
+      <button type="button" id="drums-close" class="icon" aria-label="Close">✕</button>
+    </div>
+
+    <div class="grid-scroll">
+      <div class="steps-head" id="steps-head"></div>
+      <div id="lanes"></div>
+    </div>
+
+    <p class="note">
+      Each lane plays a built-in sound until you load a file — then your sample
+      replaces it. Nothing is uploaded; the file is decoded in the browser.
+    </p>
   </div>
 </div>
 
@@ -127,6 +159,13 @@
         </ul>
       </section>
     </div>
+
+    <h4>Drums (▦)</h4>
+    <ul>
+      <li>click the grid to edit steps</li>
+      <li>tap a lane name to mute it</li>
+      <li>⇪ loads your own sample for that lane; click the filename to undo</li>
+    </ul>
 
     <p class="note">
       If the hands read backwards, tick <b>Swap hands</b> — camera drivers disagree

@@ -2,9 +2,12 @@
 
 import { midiToFreq } from './theory.js';
 
+// Each oscillator is { type, gain, detune?, ratio? }. `detune` is cents around
+// the note (for chorus-style thickening); `ratio` multiplies the frequency, so
+// whole numbers stack harmonics like an organ and odd fractions ring like metal.
 export const PRESETS = {
   warm: {
-    label: 'Warm Synth',
+    label: 'Warm',
     oscillators: [
       { type: 'sawtooth', detune: -7, gain: 0.5 },
       { type: 'triangle', detune: +7, gain: 0.5 }
@@ -17,7 +20,7 @@ export const PRESETS = {
     resonance: 2
   },
   bright: {
-    label: 'Bright Synth',
+    label: 'Bright',
     oscillators: [
       { type: 'sawtooth', detune: -4, gain: 0.45 },
       { type: 'sawtooth', detune: +9, gain: 0.35 },
@@ -31,7 +34,7 @@ export const PRESETS = {
     resonance: 4
   },
   retro: {
-    label: 'Retro Synth',
+    label: 'Retro',
     oscillators: [
       { type: 'square', detune: 0, gain: 0.6 },
       { type: 'square', detune: -12, gain: 0.4 }
@@ -42,6 +45,94 @@ export const PRESETS = {
     release: 0.18,
     cutoff: [300, 5200],
     resonance: 9
+  },
+  pluck: {
+    label: 'Pluck',
+    oscillators: [
+      { type: 'triangle', detune: 0, gain: 0.55 },
+      { type: 'sawtooth', detune: +6, gain: 0.3 }
+    ],
+    attack: 0.003,
+    decay: 0.12,
+    sustain: 0.06,
+    release: 0.28,
+    cutoff: [400, 7000],
+    resonance: 3
+  },
+  bell: {
+    // Inharmonic partials — the ratios are what make it read as struck metal
+    // rather than as a chord of sines.
+    label: 'Bell',
+    oscillators: [
+      { type: 'sine', ratio: 1, gain: 0.5 },
+      { type: 'sine', ratio: 2.76, gain: 0.24 },
+      { type: 'sine', ratio: 5.4, gain: 0.14 },
+      { type: 'sine', ratio: 8.93, gain: 0.08 }
+    ],
+    attack: 0.002,
+    decay: 0.55,
+    sustain: 0.04,
+    release: 1.1,
+    cutoff: [700, 12000],
+    resonance: 1
+  },
+  organ: {
+    // Drawbar-ish stack: octave, octave+fifth, two octaves.
+    label: 'Organ',
+    oscillators: [
+      { type: 'sine', ratio: 1, gain: 0.42 },
+      { type: 'sine', ratio: 2, gain: 0.26 },
+      { type: 'sine', ratio: 3, gain: 0.16 },
+      { type: 'sine', ratio: 4, gain: 0.11 }
+    ],
+    attack: 0.02,
+    decay: 0.05,
+    sustain: 0.95,
+    release: 0.12,
+    cutoff: [500, 9000],
+    resonance: 0.7
+  },
+  pad: {
+    label: 'Pad',
+    oscillators: [
+      { type: 'sawtooth', detune: -11, gain: 0.3 },
+      { type: 'sawtooth', detune: +11, gain: 0.3 },
+      { type: 'triangle', ratio: 2, gain: 0.16 }
+    ],
+    attack: 0.7,
+    decay: 0.9,
+    sustain: 0.85,
+    release: 1.6,
+    cutoff: [180, 4200],
+    resonance: 2.5
+  },
+  bass: {
+    label: 'Bass',
+    oscillators: [
+      { type: 'square', ratio: 0.5, gain: 0.5 },
+      { type: 'sawtooth', ratio: 0.5, detune: +5, gain: 0.3 },
+      { type: 'sine', ratio: 1, gain: 0.2 }
+    ],
+    attack: 0.008,
+    decay: 0.2,
+    sustain: 0.7,
+    release: 0.22,
+    cutoff: [120, 2600],
+    resonance: 6
+  },
+  glass: {
+    label: 'Glass',
+    oscillators: [
+      { type: 'sine', ratio: 1, gain: 0.4 },
+      { type: 'sine', ratio: 3.01, gain: 0.2 },
+      { type: 'triangle', ratio: 4.98, gain: 0.14 }
+    ],
+    attack: 0.05,
+    decay: 0.4,
+    sustain: 0.35,
+    release: 0.9,
+    cutoff: [900, 14000],
+    resonance: 1.5
   }
 };
 
@@ -85,6 +176,14 @@ export class Synth {
 
   get running() {
     return !!this.ctx && this.ctx.state === 'running';
+  }
+
+  /**
+   * Bus to plug other sources into. Drums land here so they share the limiter
+   * but skip the chord filter — hand tilt should not muffle the beat.
+   */
+  get output() {
+    return this.limiter || null;
   }
 
   setPreset(name) {
@@ -151,8 +250,8 @@ export class Synth {
     const oscs = preset.oscillators.map((spec) => {
       const osc = ctx.createOscillator();
       osc.type = spec.type;
-      osc.frequency.setValueAtTime(freq, now);
-      osc.detune.setValueAtTime(spec.detune, now);
+      osc.frequency.setValueAtTime(freq * (spec.ratio ?? 1), now);
+      osc.detune.setValueAtTime(spec.detune ?? 0, now);
 
       const g = ctx.createGain();
       g.gain.value = spec.gain;

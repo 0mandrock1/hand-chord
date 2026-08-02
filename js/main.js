@@ -3,6 +3,7 @@
 import { HandTracker, drawHands } from './tracker.js';
 import { readFrame } from './gestures.js';
 import { Synth, PRESETS } from './synth.js';
+import { Drums, LANES, PATTERNS, STEPS } from './drums.js';
 import { buildChord, midiToName, NOTE_LABELS, QUALITY_LABELS } from './theory.js';
 
 const BASE_OCTAVE = 4;
@@ -31,10 +32,22 @@ const dom = {
   rightDot: el('right-dot'),
   help: el('help'),
   helpOpen: el('help-open'),
-  helpClose: el('help-close')
+  helpClose: el('help-close'),
+  drums: el('drums'),
+  drumsOpen: el('drums-open'),
+  drumsClose: el('drums-close'),
+  drumsPlay: el('drums-play'),
+  bpm: el('bpm'),
+  bpmValue: el('bpm-value'),
+  drumPattern: el('drum-pattern'),
+  drumLevel: el('drum-level'),
+  drumLevelValue: el('drum-level-value'),
+  stepsHead: el('steps-head'),
+  lanes: el('lanes')
 };
 
 const synth = new Synth();
+let drums = null;
 let tracker = null;
 let manualFilter = 0.5;
 let lastSignature = '';
@@ -92,16 +105,184 @@ dom.help.addEventListener('click', (e) => {
   if (e.target === dom.help) dom.help.classList.remove('is-open');
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') dom.help.classList.remove('is-open');
+  if (e.key !== 'Escape') return;
+  dom.help.classList.remove('is-open');
+  dom.drums.classList.remove('is-open');
 });
 
+// ------------------------------------------------------------------- drums
+
+const stepButtons = {}; // laneId -> HTMLButtonElement[]
+let shownStep = -1;
+
+function buildDrumUI() {
+  for (const name of Object.keys(PATTERNS)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    dom.drumPattern.appendChild(opt);
+  }
+  dom.drumPattern.value = 'four/floor';
+
+  dom.stepsHead.appendChild(document.createElement('div'));
+  for (let i = 0; i < STEPS; i++) {
+    const tick = document.createElement('div');
+    tick.className = 'tick' + (i % 4 === 0 ? ' is-beat' : '');
+    tick.textContent = i % 4 === 0 ? String(i / 4 + 1) : '·';
+    dom.stepsHead.appendChild(tick);
+  }
+
+  for (const lane of LANES) {
+    const row = document.createElement('div');
+    row.className = 'lane';
+
+    const name = document.createElement('div');
+    name.className = 'lane-name';
+
+    const mute = document.createElement('button');
+    mute.type = 'button';
+    mute.textContent = lane.label;
+    mute.title = 'Mute / unmute';
+    mute.addEventListener('click', () => {
+      mute.classList.toggle('is-muted', drums.toggleMute(lane.id));
+    });
+
+    const load = document.createElement('button');
+    load.type = 'button';
+    load.className = 'load';
+    load.textContent = '⇪';
+    load.title = 'Load a sample for this lane';
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'audio/*';
+    load.appendChild(file);
+
+    const shown = document.createElement('span');
+    shown.className = 'sample';
+
+    file.addEventListener('change', async () => {
+      const picked = file.files?.[0];
+      if (!picked) return;
+      try {
+        const loaded = await drums.loadSample(lane.id, picked);
+        shown.textContent = loaded.name;
+        shown.title = `${loaded.name} — click to revert to the built-in sound`;
+      } catch (err) {
+        shown.textContent = 'bad file';
+        shown.title = String(err.message || err);
+      }
+      file.value = '';
+    });
+
+    shown.addEventListener('click', () => {
+      drums.clearSample(lane.id);
+      shown.textContent = '';
+      shown.title = '';
+    });
+
+    name.append(mute, load, shown);
+    row.appendChild(name);
+
+    stepButtons[lane.id] = [];
+    for (let i = 0; i < STEPS; i++) {
+      const step = document.createElement('button');
+      step.type = 'button';
+      step.className = 'step';
+      step.addEventListener('click', () => {
+        step.classList.toggle('is-on', drums.toggleStep(lane.id, i));
+      });
+      stepButtons[lane.id].push(step);
+      row.appendChild(step);
+    }
+
+    dom.lanes.appendChild(row);
+  }
+}
+
+function renderPattern() {
+  for (const lane of LANES) {
+    stepButtons[lane.id].forEach((btn, i) => {
+      btn.classList.toggle('is-on', drums.pattern[lane.id][i]);
+    });
+  }
+}
+
+function markStep(step, when) {
+  // `when` is an audio-clock timestamp; delay the repaint so the highlight
+  // lands with the sound rather than when the step was booked.
+  const delay = Math.max(0, (when - synth.ctx.currentTime) * 1000);
+  setTimeout(() => {
+    if (shownStep >= 0) {
+      dom.stepsHead.children[shownStep + 1]?.classList.remove('is-now');
+      for (const lane of LANES) stepButtons[lane.id][shownStep].classList.remove('is-now');
+    }
+    shownStep = step;
+    dom.stepsHead.children[step + 1]?.classList.add('is-now');
+    for (const lane of LANES) stepButtons[lane.id][step].classList.add('is-now');
+  }, delay);
+}
+
+function clearStepMarker() {
+  if (shownStep < 0) return;
+  dom.stepsHead.children[shownStep + 1]?.classList.remove('is-now');
+  for (const lane of LANES) stepButtons[lane.id][shownStep]?.classList.remove('is-now');
+  shownStep = -1;
+}
+
+dom.drumsOpen.addEventListener('click', () => dom.drums.classList.toggle('is-open'));
+dom.drumsClose.addEventListener('click', () => dom.drums.classList.remove('is-open'));
+
+dom.drumsPlay.addEventListener('click', async () => {
+  await ensureAudio();
+  if (drums.playing) {
+    drums.stop();
+    clearStepMarker();
+  } else {
+    drums.start();
+  }
+  dom.drumsPlay.textContent = drums.playing ? 'Stop' : 'Play';
+  dom.drumsPlay.classList.toggle('is-playing', drums.playing);
+});
+
+dom.bpm.addEventListener('input', () => {
+  dom.bpmValue.textContent = dom.bpm.value;
+  if (drums) drums.setBpm(Number(dom.bpm.value));
+});
+
+dom.drumPattern.addEventListener('change', async () => {
+  await ensureAudio();
+  drums.setPattern(dom.drumPattern.value);
+  renderPattern();
+});
+
+dom.drumLevel.addEventListener('input', () => {
+  dom.drumLevelValue.textContent = `${dom.drumLevel.value}%`;
+  if (drums) drums.setLevel(Number(dom.drumLevel.value) / 100);
+});
+
+buildDrumUI();
+
 // ---------------------------------------------------------------- start-up
+
+/** Audio can only start from a user gesture, so every entry point funnels here. */
+async function ensureAudio() {
+  await synth.start();
+  if (!drums) {
+    drums = new Drums(synth.ctx, synth.output);
+    drums.onStep = markStep;
+    drums.setBpm(Number(dom.bpm.value));
+    drums.setLevel(Number(dom.drumLevel.value) / 100);
+    drums.setPattern(dom.drumPattern.value);
+    renderPattern();
+  }
+  return drums;
+}
 
 dom.start.addEventListener('click', async () => {
   dom.start.disabled = true;
   setStatus('starting audio…');
   try {
-    await synth.start();
+    await ensureAudio();
     synth.setPreset(state.preset);
     synth.setFilter(manualFilter);
 
@@ -191,4 +372,6 @@ function fitCanvas() {
   }
 }
 
+// Chords are held by gesture, so a hand leaving mid-chord would otherwise drone
+// on after the tab loses focus. The beat is meant to keep running.
 window.addEventListener('blur', () => synth.allOff());

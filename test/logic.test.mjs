@@ -8,6 +8,8 @@ import { buildChord, midiToName, midiToFreq } from '../js/theory.js';
 import {
   readFingers, readDegree, readQuality, readTilt, isInward, resolveSides, readFrame
 } from '../js/gestures.js';
+import { PRESETS } from '../js/synth.js';
+import { secondsPerStep, emptyPattern, patternFrom, PATTERNS, LANES, STEPS } from '../js/drums.js';
 
 // ------------------------------------------------------------------ theory
 
@@ -175,6 +177,83 @@ test('right hand quality counts only the long fingers', () => {
   assert.equal(readQuality(one), 0);
   const four = readFingers(makeHand({ fingers: ['index', 'middle', 'ring', 'pinky'] }));
   assert.equal(readQuality(four), 3);
+});
+
+// ------------------------------------------------------------------- drums
+
+test('a step is a sixteenth note at the given tempo', () => {
+  assert.equal(secondsPerStep(120), 0.125);      // 120 BPM -> 0.5s beat -> 0.125s step
+  assert.equal(secondsPerStep(60), 0.25);
+  assert.ok(Math.abs(secondsPerStep(140) - 60 / 140 / 4) < 1e-12);
+  // one full pass of the grid is exactly one bar of 4/4
+  assert.ok(Math.abs(secondsPerStep(120) * STEPS - 2) < 1e-12);
+});
+
+test('an empty pattern has every lane, all steps off', () => {
+  const p = emptyPattern();
+  assert.deepEqual(Object.keys(p).sort(), LANES.map((l) => l.id).sort());
+  for (const lane of LANES) {
+    assert.equal(p[lane.id].length, STEPS);
+    assert.ok(p[lane.id].every((s) => s === false));
+  }
+});
+
+test('patternFrom turns step indices into flags', () => {
+  const p = patternFrom({ kick: [0, 4, 8, 12] });
+  assert.deepEqual(
+    p.kick.map((on, i) => (on ? i : null)).filter((i) => i !== null),
+    [0, 4, 8, 12]
+  );
+  assert.ok(p.snare.every((s) => s === false));
+});
+
+test('patternFrom ignores out-of-range steps and unknown lanes', () => {
+  const p = patternFrom({ kick: [-1, 0, STEPS, 99], nosuchlane: [0] });
+  assert.equal(p.kick.filter(Boolean).length, 1);
+  assert.equal(p.kick[0], true);
+  assert.ok(!('nosuchlane' in p));
+});
+
+test('every built-in pattern is playable', () => {
+  for (const [name, spec] of Object.entries(PATTERNS)) {
+    const p = patternFrom(spec);
+    for (const lane of LANES) {
+      assert.equal(p[lane.id].length, STEPS, `${name}/${lane.id} wrong length`);
+    }
+  }
+  // and they are not all silent
+  assert.ok(patternFrom(PATTERNS['four/floor']).kick.filter(Boolean).length > 0);
+  assert.equal(patternFrom(PATTERNS.empty).kick.filter(Boolean).length, 0);
+});
+
+// ---------------------------------------------------------------- presets
+
+test('every synth preset is complete and sanely ordered', () => {
+  for (const [name, p] of Object.entries(PRESETS)) {
+    assert.ok(p.label, `${name} needs a label`);
+    assert.ok(p.oscillators.length > 0, `${name} needs oscillators`);
+    for (const o of p.oscillators) {
+      assert.ok(['sine', 'square', 'sawtooth', 'triangle'].includes(o.type),
+        `${name}: bad oscillator type ${o.type}`);
+      assert.ok(o.gain > 0 && o.gain <= 1, `${name}: gain out of range`);
+      if (o.ratio !== undefined) assert.ok(o.ratio > 0, `${name}: ratio must be positive`);
+    }
+    // summed oscillator gain drives one envelope; over 1 and the voice clips
+    const sum = p.oscillators.reduce((a, o) => a + o.gain, 0);
+    assert.ok(sum <= 1.001, `${name}: oscillator gains sum to ${sum}`);
+
+    for (const k of ['attack', 'decay', 'release']) {
+      assert.ok(p[k] > 0, `${name}: ${k} must be positive`);
+    }
+    assert.ok(p.sustain >= 0 && p.sustain <= 1, `${name}: sustain out of range`);
+    const [lo, hi] = p.cutoff;
+    assert.ok(lo > 0 && hi > lo, `${name}: cutoff range must ascend`);
+    assert.ok(hi <= 20000, `${name}: cutoff above hearing`);
+  }
+});
+
+test('there are several synths to choose from', () => {
+  assert.ok(Object.keys(PRESETS).length >= 8);
 });
 
 // ------------------------------------------------------------ side assignment
