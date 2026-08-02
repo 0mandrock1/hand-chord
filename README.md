@@ -69,8 +69,8 @@ webcam ──► MediaPipe HandLandmarker ──► gesture features ──► c
 
 | File | Responsibility |
 | --- | --- |
-| `js/tracker.js` | camera stream, MediaPipe landmarks, skeleton overlay |
-| `js/gestures.js` | landmarks → extended fingers, tilt, height → control frame |
+| `js/tracker.js` | camera stream, MediaPipe landmarks and raw handedness, skeleton overlay |
+| `js/gestures.js` | which hand is which, then landmarks → fingers, tilt, height → control frame |
 | `js/theory.js` | scales, diatonic chords, inversions, sevenths, chord names |
 | `js/synth.js` | polyphonic Web Audio voices, three presets, filter, limiter |
 | `js/main.js` | wiring and UI state |
@@ -79,6 +79,15 @@ Finger extension is measured rotation-invariantly: a fingertip further from the
 wrist than its own middle joint counts as extended, so the reading survives a
 rotated or tilted hand. The thumb is judged sideways instead, by its distance to
 the index knuckle relative to the palm span.
+
+Telling the hands apart is where this kind of app usually breaks. MediaPipe's
+handedness label is the anatomically correct hand for the frame as handed in —
+verified against its own `left_hands.jpg` / `right_hands.jpg` test images, not
+assumed — and the display mirror is CSS-only, so the label is used as-is. Its
+one real failure mode is labelling both hands the same, which would silence one
+of them; when that happens the app falls back to screen position, since a
+mirrored view puts your left hand on the left. Labels take priority so that
+crossing your hands still works.
 
 Chords are rebuilt only when the gesture signature actually changes, so held
 notes ring instead of retriggering every frame.

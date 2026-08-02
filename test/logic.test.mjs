@@ -5,7 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildChord, midiToName, midiToFreq } from '../js/theory.js';
-import { readFingers, readDegree, readQuality, readTilt, isInward } from '../js/gestures.js';
+import {
+  readFingers, readDegree, readQuality, readTilt, isInward, resolveSides, readFrame
+} from '../js/gestures.js';
 
 // ------------------------------------------------------------------ theory
 
@@ -173,6 +175,88 @@ test('right hand quality counts only the long fingers', () => {
   assert.equal(readQuality(one), 0);
   const four = readFingers(makeHand({ fingers: ['index', 'middle', 'ring', 'pinky'] }));
   assert.equal(readQuality(four), 3);
+});
+
+// ------------------------------------------------------------ side assignment
+
+/** A hand positioned at a given mirrored-x, with a given MediaPipe label. */
+function placed(mirroredX, label, opts = {}) {
+  const lm = makeHand(opts);
+  const shift = (1 - mirroredX) - lm[0].x;
+  return { label, landmarks: lm.map((p) => ({ ...p, x: p.x + shift })) };
+}
+
+test('MediaPipe labels are passed through, never inverted', () => {
+  // Regression: the first version flipped every label on the theory that
+  // MediaPipe assumes a mirrored frame. It does not — checked against its own
+  // left_hands.jpg / right_hands.jpg — and flipping silenced one whole hand.
+  const [a, b] = resolveSides([
+    placed(0.2, 'Left'),
+    placed(0.8, 'Right')
+  ]);
+  assert.equal(a.side, 'left');
+  assert.equal(b.side, 'right');
+});
+
+test('labels win over position, so crossed hands still work', () => {
+  // player crosses over: the left hand is now on the right of the screen
+  const [a, b] = resolveSides([
+    placed(0.8, 'Left'),
+    placed(0.2, 'Right')
+  ]);
+  assert.equal(a.side, 'left');
+  assert.equal(b.side, 'right');
+});
+
+test('two hands labelled the same fall back to screen position', () => {
+  const [a, b] = resolveSides([
+    placed(0.75, 'Left'),
+    placed(0.25, 'Left')
+  ]);
+  assert.equal(a.side, 'right'); // further right on screen
+  assert.equal(b.side, 'left');
+});
+
+test('missing labels fall back to screen position', () => {
+  const [a, b] = resolveSides([placed(0.9, null), placed(0.1, null)]);
+  assert.equal(a.side, 'right');
+  assert.equal(b.side, 'left');
+});
+
+test('a lone unlabelled hand takes the left part, which is the one that sounds', () => {
+  const [only] = resolveSides([placed(0.5, null)]);
+  assert.equal(only.side, 'left');
+});
+
+test('swapHands inverts the final assignment', () => {
+  const [a, b] = resolveSides(
+    [placed(0.2, 'Left'), placed(0.8, 'Right')],
+    { swapHands: true }
+  );
+  assert.equal(a.side, 'right');
+  assert.equal(b.side, 'left');
+});
+
+test('both hands reach their own controls in one frame', () => {
+  const frame = readFrame([
+    placed(0.2, 'Left', { fingers: ['index', 'middle'], tilt: 20 }),
+    placed(0.8, 'Right', { fingers: ['index'], tilt: -20 })
+  ]);
+  assert.ok(frame.left, 'left hand must be read');
+  assert.ok(frame.right, 'right hand must be read');
+  assert.equal(frame.degree, 1);       // two fingers -> II
+  assert.equal(frame.mode, 'major');   // leaning inward
+  assert.equal(frame.quality, 0);      // one finger -> root position
+  assert.ok(frame.filter > 0.5);       // right hand leaning inward -> brighter
+  assert.equal(frame.hands.length, 2);
+});
+
+test('thumb tucked in is the higher octave, thumb out the lower', () => {
+  const tucked = readFrame([placed(0.8, 'Right', { thumbOut: false })]);
+  const out = readFrame([placed(0.8, 'Right', { thumbOut: true })]);
+  assert.equal(tucked.octaveShift, 0);
+  assert.equal(out.octaveShift, -1);
+  assert.ok(tucked.octaveShift > out.octaveShift, 'tucked thumb must sound higher');
 });
 
 test('tilt is signed and inwardness is hand-relative', () => {

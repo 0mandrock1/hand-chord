@@ -83,7 +83,7 @@ dom.filter.addEventListener('input', () => {
 });
 
 dom.swap.addEventListener('change', () => {
-  if (tracker) tracker.swapHands = dom.swap.checked;
+  lastSignature = ''; // the chord may now be coming from the other hand
 });
 
 dom.helpOpen.addEventListener('click', () => dom.help.classList.add('is-open'));
@@ -106,7 +106,7 @@ dom.start.addEventListener('click', async () => {
     synth.setFilter(manualFilter);
 
     setStatus('loading hand model…');
-    tracker = new HandTracker(dom.video, { swapHands: dom.swap.checked });
+    tracker = new HandTracker(dom.video);
     tracker.onFrame = handleFrame;
     await tracker.init();
     tracker.start();
@@ -129,9 +129,10 @@ function setStatus(text, isError = false) {
 
 function handleFrame(hands) {
   fitCanvas();
-  drawHands(dom.canvas.getContext('2d'), hands, HAND_COLOURS);
 
-  const frame = readFrame(hands);
+  const frame = readFrame(hands, { swapHands: dom.swap.checked });
+  drawHands(dom.canvas.getContext('2d'), frame.hands, HAND_COLOURS);
+
   dom.leftDot.classList.toggle('is-on', !!frame.left);
   dom.rightDot.classList.toggle('is-on', !!frame.right);
 

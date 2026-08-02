@@ -7,12 +7,14 @@ const MODEL_URL =
 
 export class HandTracker {
   /**
+   * Perception only: this class reports what the camera sees — landmarks and
+   * MediaPipe's raw handedness label. Deciding which hand plays which role is
+   * gestures.js's job (see resolveSides).
+   *
    * @param {HTMLVideoElement} video
-   * @param {{swapHands?: boolean}} [opts]
    */
-  constructor(video, opts = {}) {
+  constructor(video) {
     this.video = video;
-    this.swapHands = !!opts.swapHands;
     this.landmarker = null;
     this.running = false;
     this.lastVideoTime = -1;
@@ -69,16 +71,18 @@ export class HandTracker {
     const result = this.landmarker.detectForVideo(v, performance.now());
     const hands = [];
 
-    for (let i = 0; i < result.landmarks.length; i++) {
-      const label = result.handednesses?.[i]?.[0]?.categoryName || 'Right';
-      // MediaPipe labels handedness for the raw (unmirrored) camera image;
-      // in a selfie view that is the opposite of the hand the user is raising.
-      let side = label.toLowerCase() === 'left' ? 'right' : 'left';
-      if (this.swapHands) side = side === 'left' ? 'right' : 'left';
+    // `handedness` is current, `handednesses` is the deprecated alias kept for
+    // older builds. Verified against MediaPipe's own labelled test images
+    // (left_hands.jpg / right_hands.jpg): the label is the ANATOMICALLY correct
+    // hand for the frame as handed in, with no mirroring applied. Our display
+    // mirror is CSS-only and does not reach the detector, so the label is
+    // passed through untouched.
+    const handedness = result.handedness || result.handednesses || [];
 
+    for (let i = 0; i < result.landmarks.length; i++) {
       hands.push({
-        side,
-        score: result.handednesses?.[i]?.[0]?.score ?? 1,
+        label: handedness[i]?.[0]?.categoryName ?? null,
+        score: handedness[i]?.[0]?.score ?? 0,
         landmarks: result.landmarks[i]
       });
     }

@@ -107,12 +107,63 @@ export function readQuality(fingers) {
   return count === 0 ? 0 : count - 1;
 }
 
+function normaliseLabel(label) {
+  if (typeof label !== 'string') return null;
+  const l = label.toLowerCase();
+  return l === 'left' || l === 'right' ? l : null;
+}
+
+/** Horizontal position of the wrist in mirrored screen space, 0 = screen-left. */
+function mirroredX(hand) {
+  return 1 - hand.landmarks[WRIST].x;
+}
+
+/**
+ * Decide which detected hand plays the left part and which plays the right.
+ *
+ * MediaPipe's label is trusted when it distinguishes the two hands, because it
+ * survives hands crossing over each other. Its characteristic failure is giving
+ * BOTH hands the same label — one hand then goes silent, since two hands cannot
+ * both be the left one. In that case fall back to screen position: the display
+ * is mirrored, so the player's left hand sits on the left of the screen.
+ *
+ * @param {Array<{landmarks:Array, label:?string}>} hands
+ * @param {{swapHands?: boolean}} [opts]
+ * @returns {Array<{landmarks:Array, label:?string, side:'left'|'right'}>}
+ */
+export function resolveSides(hands, { swapHands = false } = {}) {
+  const out = hands.map((h) => ({ ...h, side: normaliseLabel(h.label) }));
+
+  if (out.length === 2) {
+    if (!out[0].side || !out[1].side || out[0].side === out[1].side) {
+      const [l, r] = mirroredX(out[0]) <= mirroredX(out[1])
+        ? [out[0], out[1]]
+        : [out[1], out[0]];
+      l.side = 'left';
+      r.side = 'right';
+    }
+  } else {
+    // A single unlabelled hand has nothing to compare against; assume the left
+    // part, which is the one that actually makes sound.
+    for (const h of out) h.side = h.side || 'left';
+  }
+
+  if (swapHands) {
+    for (const h of out) h.side = h.side === 'left' ? 'right' : 'left';
+  }
+  return out;
+}
+
 /**
  * Read both hands into one control frame.
- * @param {Array<{landmarks:Array, side:'left'|'right'}>} hands
+ * @param {Array<{landmarks:Array, label:?string}>} hands
+ * @param {{swapHands?: boolean}} [opts]
  */
-export function readFrame(hands) {
+export function readFrame(hands, opts = {}) {
+  const resolved = resolveSides(hands, opts);
+
   const out = {
+    hands: resolved, // side-tagged, for the overlay
     left: null,
     right: null,
     degree: null,
@@ -123,7 +174,7 @@ export function readFrame(hands) {
     volume: null
   };
 
-  for (const hand of hands) {
+  for (const hand of resolved) {
     const fingers = readFingers(hand.landmarks);
     const info = {
       fingers,
@@ -140,7 +191,9 @@ export function readFrame(hands) {
     } else {
       out.right = info;
       out.quality = readQuality(fingers);
-      out.octaveShift = fingers.thumb ? 0 : -1; // thumb tucked in = higher octave
+      // fingers.thumb is true when the thumb is held AWAY from the palm, and a
+      // thumb held out means the lower octave.
+      out.octaveShift = fingers.thumb ? -1 : 0;
       out.filter = clamp((info.lean + 45) / 90, 0, 1);
       out.volume = clamp((info.height - 0.15) / 0.6, 0, 1);
     }
